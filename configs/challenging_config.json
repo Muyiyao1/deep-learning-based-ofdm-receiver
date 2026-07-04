@@ -1,0 +1,14 @@
+{
+  "num_subcarriers": 64,
+  "cp_length": 16,
+  "num_ofdm_symbols": 14,
+  "modulation": "16qam",
+  "pilot_spacing": 8,
+  "pilot_offset": 0,
+  "pilot_value_real": 0.7071067811865475,
+  "pilot_value_imag": 0.7071067811865475,
+  "num_channel_taps": 12,
+  "snr_db_values": [0, 5, 10, 15, 20, 25, 30],
+  "random_seed": 4321,
+  "num_eval_frames": 500
+}
