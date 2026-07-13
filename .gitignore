@@ -14,13 +14,16 @@ dist/
 
 checkpoints/*.pt
 checkpoints/*.pth
+checkpoints/**/*.pt
+checkpoints/**/*.pth
 results/*.csv
 results/*.png
 results/*.json
 results/*.npy
 results/*.npz
 results/quick/
+results/archive_pre_reconstruction/
+results/final/logs/
+tmp/
 
 !.gitkeep
-!results/challenging/
-!results/challenging/**

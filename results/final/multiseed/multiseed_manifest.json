@@ -1,0 +1,33 @@
+{
+  "training_seeds": [
+    1101,
+    1201,
+    1301
+  ],
+  "test_seeds": [
+    8101,
+    8201,
+    8301
+  ],
+  "test_snr_db_values": [
+    10,
+    20,
+    30
+  ],
+  "frames_per_test_seed": 60,
+  "training_regimes": [
+    "single",
+    "domain_randomized"
+  ],
+  "scenarios": [
+    "matched_12tap_exponential",
+    "mismatch_8tap_uniform",
+    "unseen_10tap_steep_exponential"
+  ],
+  "ci_method": "two-sided Student-t across independent seeds",
+  "sample_covariance_sizes": [
+    100,
+    1000,
+    10000
+  ]
+}

@@ -1,175 +1,116 @@
-# Deep Learning Based OFDM Receiver
+# Deep Learning-Aided OFDM Channel Estimation
 
-[Chinese README](README.zh-CN.md)
+[中文版](README.zh-CN.md) | [Editable Chinese report](report.md) | [Final report PDF](report.pdf) | [Experiment digest](results/final/experiment_summary.md)
 
-This repository implements a reproducible OFDM receiver simulation platform for comparing traditional pilot-based receivers with a CNN-based channel-estimation receiver. The project is organized as a Python codebase rather than a single notebook: it includes OFDM system modeling, modulation and channel utilities, baseline receivers, PyTorch training code, evaluation scripts, tests, and result visualizations.
-
-## Project Background
-
-Orthogonal Frequency Division Multiplexing (OFDM) is widely used in wireless systems such as Wi-Fi, LTE, and 5G NR. A conventional receiver estimates the channel from known pilot subcarriers, interpolates the channel response over data subcarriers, and then applies equalization before hard-decision demodulation.
-
-This project studies a hybrid receiver design. The CNN does not replace the whole receiver. Instead, it learns to reconstruct the full frequency-domain channel response from sparse LS pilot estimates and a pilot mask. The estimated channel is then used by standard ZF or MMSE equalization.
+A reproducible NumPy/PyTorch study of a **deep-learning-aided channel-estimation component** in a conventional OFDM receiver. It is not an end-to-end learned receiver. Every method uses the same bits, block-fading channel, AWGN realization, pilot observations, and test frames.
 
 ## System Model
 
-Default OFDM settings:
-
-| Parameter | Value |
-| --- | --- |
-| Subcarriers | `64` |
-| Cyclic prefix length | `16` |
-| OFDM symbols per frame | `14` |
-| Default modulation | QPSK |
-| Pilot type | comb-type pilots |
-| Default pilot spacing | `4` |
-| Channel model | frequency-selective Rayleigh multipath |
-| Default channel taps | `8` |
-| Evaluation SNRs | `0, 5, 10, 15, 20, 25, 30 dB` |
-
-The harder included experiment uses 16QAM, pilot spacing `8`, and a 12-tap Rayleigh channel to make the channel-estimation gap easier to observe.
-
-## Traditional Baselines
-
-The receiver is compared against pilot-based baselines:
-
-- LS channel estimation on pilot subcarriers;
-- linear interpolation for non-pilot subcarriers;
-- ZF equalization;
-- MMSE equalization.
-
-These baselines are implemented as transparent communication-system references rather than black-box learning models.
-
-## Deep Learning Method
-
-The learning component is a CNN channel estimator implemented in PyTorch.
-
-Input tensor:
-
 ```text
-[B, 3, T, N]
+bits -> QAM -> pilot/data/guard/DC mapping -> unitary IFFT + CP
+-> Rayleigh block-fading FIR + AWGN -> CP removal + unitary FFT
+-> channel estimation -> one-tap ZF/MMSE -> hard demapping -> BER/SER/EVM
 ```
 
-The three input channels are sparse LS real part, sparse LS imaginary part, and pilot mask.
+`Y[k] = H[k]X[k] + W[k]`, with unitary scaling `ifft(X)*sqrt(N)` and `fft(y)/sqrt(N)`. Each Rayleigh realization has `sum_l |h[l]|^2 = 1`; configuration enforces `channel_taps <= cp_length`.
 
-Output tensor:
+SNR is consistently defined after the multipath channel:
 
 ```text
-[B, 2, T, N]
+noise_power = mean(abs(channel_output)^2) / 10^(SNR_dB / 10)
 ```
 
-The two output channels are the real and imaginary parts of the full channel response. The training objective is MSE over the complex channel response, represented as separate real and imaginary tensors.
+Training, validation, and evaluation share this frame-generation path. This SNR is not directly `Eb/N0`.
 
-Core files:
+## Methods
 
-| Path | Purpose |
-| --- | --- |
-| `src/ofdm.py` | OFDM resource grid, modulation, cyclic prefix, and FFT/IFFT helpers. |
-| `src/channel.py` | Rayleigh multipath channel and AWGN utilities. |
-| `src/estimators.py` | LS interpolation and equalization helpers. |
-| `src/models.py` | CNN channel-estimator model. |
-| `src/train.py` | Training loop and checkpoint export. |
-| `src/evaluate.py` | BER, SER, EVM, and channel-MSE evaluation. |
+- Perfect CSI, per-symbol LS, Frame-LS, and finite-delay DFT-LS.
+- Oracle LMMSE, train-prior LMMSE, and sample-covariance LMMSE using 100/1,000/10,000 historical channels.
+- Residual 1-D CNN: plain, residual, hard delay projection, soft delay regularization, and domain-randomized training.
 
-## Experimental Setup
+For fixed pilot pattern, PDP, channel length, and SNR, LMMSE caches:
 
-Install dependencies:
+```text
+K = R_hp @ inv(R_pp + noise_cov)  # offline
+H_hat = K @ H_LS                  # online
+```
+
+The inverse is never recomputed per frame. ZF and de-biased MMSE hard decisions can coincide in this uncoded one-tap link for a fixed channel estimate; this is expected.
+
+## Staggered Pilot Setup
+
+The formal configuration has FFT 64, 14 OFDM symbols, 8 guard tones, one DC null, and 55 active subcarriers. Each symbol has 6-7 pilots. A frame has 97 pilot observations, 12.60% pilot overhead, 100% active-subcarrier union coverage, and 1-2 observations per active subcarrier (mean 1.764).
+
+This is a **frame-level observation-fusion and channel-denoising** experiment with sparse single-symbol pilots, not a pure interpolation problem. Frame-LS, DFT-LS, LMMSE, and CNN use the same frame-level pilot information.
+
+![Staggered pilot pattern](results/final/multiseed/pilot_pattern.png)
+
+## Results and Conclusions
+
+At 20 dB in the matched 12-tap exponential-PDP case:
+
+| Receiver | BER (mean +/- 95% Student-t CI) | Channel NMSE (mean +/- 95% Student-t CI) |
+| --- | --- | --- |
+| Perfect CSI + ZF | `1.2100e-02 +/- 8.69e-04` | `0` |
+| Frame-LS-linear + ZF | `1.8493e-02 +/- 6.19e-04` | `4.7356e-02 +/- 7.67e-03` |
+| DFT-LS + ZF | `1.8577e-02 +/- 7.14e-04` | `3.4018e-02 +/- 6.48e-03` |
+| Oracle LMMSE + ZF | `1.3400e-02 +/- 1.01e-03` | `2.0500e-03 +/- 3.81e-04` |
+| Residual CNN + ZF | `1.4991e-02 +/- 1.54e-03` | `1.1124e-02 +/- 4.39e-04` |
+
+Three independently trained CNNs are evaluated on the same three fixed test streams. CNN intervals use Student-t across **model/training seeds**; conventional-method intervals use Student-t across **test Monte Carlo seeds**. The raw outputs are kept separately.
+
+Practical LMMSE with 10,000 historical channels has BER `1.6481e-02` at 20 dB matched and `1.8803e-02` under 8-tap uniform-PDP mismatch. The single-distribution CNN has `1.8857e-02` and `2.7710e-02`; domain randomization improves the mismatch CNN to `2.4661e-02`, but does not beat practical LMMSE in either case. On the unseen steep exponential-PDP case, the single CNN has slightly lower BER than practical LMMSE but higher NMSE; their CIs summarize different uncertainty layers and do not establish general superiority.
+
+Hard delay projection lowers overall NMSE, but does not yield a separable BER gain and increases deep-fade NMSE. The supported conclusion is conditional: CNN can improve weak LS-like baselines in some settings but does not beat oracle LMMSE. Practical LMMSE is stronger in the matched and 8-tap uniform experiments; on the unseen steep exponential-PDP case, the single CNN has slightly lower BER but higher NMSE. Its model-seed CI and LMMSE test-seed CI are different uncertainty layers, so that point does not support a general superiority claim.
+
+![Matched BER](results/final/matched/ber_vs_snr.png)
+
+![Practical comparison under mismatch](results/final/multiseed/practical_ber_mismatch_8tap_uniform.png)
+
+## Complexity
+
+The formal CPU benchmark uses batch 64, five warm-ups, and 15 repeated measurements. Its host-dependent current values, including covariance construction, cached `K` construction, checkpoint loading, online mean/std, parameter count, MAC estimate, and memory/storage, are emitted to `results/final/multiseed/complexity_benchmark.csv` and summarized in the report. The CNN has 25,858 parameters, roughly 1.64M convolution MACs/frame, and a 113,183-byte checkpoint.
+
+![Cached-online complexity](results/final/multiseed/complexity_benchmark.png)
+
+## Layout
+
+```text
+configs/                         Experiment configurations
+src/                             OFDM link, estimators, dataset, CNN, training, evaluation
+scripts/run_full_experiment.py   Formal train/evaluate/report workflow
+scripts/run_multiseed_experiment.py
+scripts/run_ablation.py
+tests/                           Unit and audit tests
+results/final/                   Current CSVs, figures, manifests, and digest
+checkpoints/                     Independent-training-seed checkpoints
+```
+
+## Install and Run
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-Run traditional baselines:
-
-```powershell
-python scripts/run_baseline.py --num-test-frames 200
-```
-
-Train the CNN receiver component:
-
-```powershell
-python scripts/train_cnn_receiver.py --epochs 2 --num-train-samples 1000 --num-val-samples 200
-```
-
-Evaluate all methods after a checkpoint exists:
-
-```powershell
-python scripts/evaluate_all.py --num-test-frames 200
-```
-
-Run the included harder 16QAM sparse-pilot experiment:
-
-```powershell
-python scripts/run_challenging_experiment.py
-```
-
-Run tests:
-
-```powershell
 python -m pytest tests/
 ```
 
-## Result Figures
+Quick verification:
 
-Included result files are stored under `results/challenging/`.
-
-![Challenging BER comparison](results/challenging/ber_comparison.png)
-
-![Challenging SER comparison](results/challenging/ser_comparison.png)
-
-![Channel MSE comparison](results/challenging/channel_mse_vs_snr.png)
-
-![CNN gain vs SNR](results/challenging/cnn_gain_vs_snr.png)
-
-In the included 16QAM sparse-pilot setting, CNN+MMSE reduces BER by about 24.8% at 20 dB compared with LS+MMSE, and the channel-MSE reduction is about 43.5%.
-
-## Conclusion
-
-The results show that the CNN channel estimator is most useful when pilots are sparse, modulation is more sensitive to channel-estimation error, and the channel is strongly frequency-selective. The project should be read as a modular learning-assisted OFDM receiver study: the CNN improves the channel-estimation component while the receiver still uses interpretable conventional equalization.
-
-## Improvements
-
-Possible next steps:
-
-- compare against stronger traditional estimators such as LMMSE, DFT denoising, and spline interpolation;
-- add time-varying channels, Doppler, CFO, phase noise, and hardware impairments;
-- extend evaluation to 64QAM and coded BER or BLER;
-- add confidence intervals for Monte Carlo results;
-- test larger CNN, U-Net, or transformer-style channel estimators.
-
-## Project Structure
-
-```text
-.
-|-- README.md
-|-- README.zh-CN.md
-|-- requirements.txt
-|-- report.pdf
-|-- configs/
-|   |-- default_config.json
-|   `-- challenging_config.json
-|-- data/
-|-- src/
-|   |-- channel.py
-|   |-- config.py
-|   |-- dataset.py
-|   |-- estimators.py
-|   |-- evaluate.py
-|   |-- models.py
-|   |-- modulation.py
-|   |-- ofdm.py
-|   |-- plots.py
-|   |-- train.py
-|   `-- utils.py
-|-- scripts/
-|   |-- run_baseline.py
-|   |-- train_cnn_receiver.py
-|   |-- evaluate_all.py
-|   |-- run_challenging_experiment.py
-|   `-- build_readme_pdf.py
-|-- tests/
-|-- notebooks/
-`-- results/
-    `-- challenging/
+```powershell
+python scripts/run_full_experiment.py --config configs/quick_experiment.json --mismatch-config configs/mismatch_config.json --multiseed-config configs/quick_experiment.json --domain-config configs/domain_randomized_quick_config.json --checkpoint checkpoints/quick_full.pt --results-dir results/quick --skip-report
 ```
+
+Formal experiment and report:
+
+```powershell
+python scripts/run_full_experiment.py
+```
+
+Reuse validated checkpoints while regenerating artifacts:
+
+```powershell
+python scripts/run_full_experiment.py --skip-train
+```
+
+## Limits
+
+The model assumes perfect synchronization and frame-static fading. CFO, phase noise, Doppler, IQ imbalance, RF nonlinearity, and channel coding are outside the present scope.

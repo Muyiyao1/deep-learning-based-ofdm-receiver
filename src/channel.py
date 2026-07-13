@@ -1,45 +1,55 @@
-"""Frequency-selective Rayleigh channel and AWGN helpers."""
+"""Frequency-selective Rayleigh channel, PDP, and AWGN helpers."""
 
 from __future__ import annotations
 
 import numpy as np
 
 
-def generate_rayleigh_channel(
-    num_taps: int,
-    rng: np.random.Generator | None = None,
-    exponential_decay: float = 0.45,
-) -> np.ndarray:
-    """Generate a normalized complex Rayleigh multipath channel.
-
-    The taps follow an exponentially decaying power-delay profile and are
-    normalized so that sum_l |h_l|^2 = 1 for each realization.
-    """
+def power_delay_profile(num_taps: int, pdp: str = "exponential", exponential_decay: float = 0.45) -> np.ndarray:
+    """Return a unit-sum power-delay profile used by generation and LMMSE."""
 
     if num_taps <= 0:
         raise ValueError("num_taps must be positive.")
-    rng = np.random.default_rng() if rng is None else rng
-    powers = np.exp(-exponential_decay * np.arange(num_taps, dtype=np.float64))
-    powers = powers / np.sum(powers)
-    real = rng.normal(size=num_taps)
-    imag = rng.normal(size=num_taps)
-    taps = (real + 1j * imag) * np.sqrt(powers / 2.0)
-    energy = np.sum(np.abs(taps) ** 2)
-    if energy == 0:
-        taps[0] = 1.0 + 0j
+    if pdp == "uniform":
+        powers = np.ones(num_taps, dtype=np.float64)
+    elif pdp == "exponential":
+        powers = np.exp(-float(exponential_decay) * np.arange(num_taps, dtype=np.float64))
     else:
-        taps = taps / np.sqrt(energy)
+        raise ValueError(f"Unsupported PDP: {pdp}")
+    return powers / np.sum(powers)
+
+
+def generate_rayleigh_channel(
+    num_taps: int,
+    rng: np.random.Generator | None = None,
+    pdp: str = "exponential",
+    exponential_decay: float = 0.45,
+) -> np.ndarray:
+    """Generate one normalized complex Rayleigh FIR channel.
+
+    Each realization is normalized to unit energy.  This keeps the received
+    SNR convention stable while retaining the nominal PDP shape.
+    """
+
+    rng = np.random.default_rng() if rng is None else rng
+    powers = power_delay_profile(num_taps, pdp=pdp, exponential_decay=exponential_decay)
+    taps = (rng.normal(size=num_taps) + 1j * rng.normal(size=num_taps)) * np.sqrt(powers / 2.0)
+    taps /= np.sqrt(np.sum(np.abs(taps) ** 2))
     return taps.astype(np.complex64)
 
 
 def channel_frequency_response(taps: np.ndarray, num_subcarriers: int) -> np.ndarray:
-    """Return the N-point frequency response of a channel impulse response."""
+    """Return physical channel response H[k] = FFT{h[l]} under unitary OFDM."""
 
     return np.fft.fft(np.asarray(taps), n=num_subcarriers).astype(np.complex64)
 
 
 def apply_multipath_channel(signal: np.ndarray, taps: np.ndarray) -> np.ndarray:
-    """Apply a causal finite impulse response channel and keep the input length."""
+    """Apply causal convolution and retain waveform length.
+
+    With CP >= channel length, the post-CP samples of every OFDM symbol have
+    the circular-convolution relation used by the one-tap frequency response.
+    """
 
     y = np.convolve(np.asarray(signal), np.asarray(taps), mode="full")
     return y[: len(signal)].astype(np.complex64)
@@ -50,16 +60,17 @@ def add_awgn(
     snr_db: float,
     rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, float]:
-    """Add complex AWGN using empirical received-signal power.
+    """Add complex AWGN with empirical post-channel received-signal SNR.
 
-    SNR convention:
-        noise_power = mean(|signal|^2) / 10^(SNR_dB / 10)
+    ``noise_power = mean(abs(signal)**2) / 10**(snr_db / 10)``.  The returned
+    noise variance is complex-sample variance E[|w|^2], also valid after the
+    unitary OFDM FFT.
     """
 
     rng = np.random.default_rng() if rng is None else rng
-    signal = np.asarray(signal)
+    signal = np.asarray(signal, dtype=np.complex64)
     signal_power = float(np.mean(np.abs(signal) ** 2))
-    noise_power = signal_power / (10.0 ** (snr_db / 10.0))
+    noise_power = signal_power / (10.0 ** (float(snr_db) / 10.0))
     sigma = np.sqrt(noise_power / 2.0)
     noise = sigma * (rng.normal(size=signal.shape) + 1j * rng.normal(size=signal.shape))
     return (signal + noise).astype(np.complex64), float(noise_power)
@@ -71,7 +82,6 @@ def transmit_through_channel(
     snr_db: float,
     rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, float]:
-    """Apply multipath channel and AWGN."""
+    """Apply multipath fading then AWGN using the project-wide SNR convention."""
 
-    faded = apply_multipath_channel(signal, taps)
-    return add_awgn(faded, snr_db=snr_db, rng=rng)
+    return add_awgn(apply_multipath_channel(signal, taps), snr_db=snr_db, rng=rng)

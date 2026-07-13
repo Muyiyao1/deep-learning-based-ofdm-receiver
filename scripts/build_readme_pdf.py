@@ -218,7 +218,9 @@ def build_story(markdown: str, width: float, styles: dict[str, ParagraphStyle]) 
         stripped = lines[i].strip()
         if not stripped:
             flush_paragraph(buffer, story, styles["base"])
-            story.append(Spacer(1, 0.08 * cm))
+            # Avoid a trailing spacer that can force a fully blank final page.
+            if any(line.strip() for line in lines[i + 1 :]):
+                story.append(Spacer(1, 0.08 * cm))
             i += 1
             continue
 
@@ -232,7 +234,8 @@ def build_story(markdown: str, width: float, styles: dict[str, ParagraphStyle]) 
             if i < len(lines):
                 i += 1
             story.append(Preformatted("\n".join(code_lines), styles["code"], maxLineLength=90))
-            story.append(Spacer(1, 0.18 * cm))
+            if i < len(lines):
+                story.append(Spacer(1, 0.18 * cm))
             continue
 
         if is_table_line(stripped):
@@ -323,7 +326,7 @@ def main() -> None:
         leftMargin=1.65 * cm,
         topMargin=1.55 * cm,
         bottomMargin=1.85 * cm,
-        title="Deep Learning Based OFDM Receiver - Chinese Report",
+        title="深度学习辅助的 OFDM 信道估计：公平基线、物理先验与泛化分析",
         author="Deep Learning Based OFDM Receiver",
     )
     doc.build(build_story(markdown, doc.width, styles), onFirstPage=add_page, onLaterPages=add_page)

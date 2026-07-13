@@ -1,0 +1,30 @@
+{
+  "config_path": "configs/multiseed_config.json",
+  "config_fingerprint": "f8a5a8b561ba8619b6ef73319b47b893fc1b9321b70976502b14a0a6d846339c",
+  "model_spec": {
+    "model_name": "residual_1d_cnn_delay_projected_v1",
+    "hidden_channels": 32,
+    "num_blocks": 4,
+    "channel_length": 12,
+    "in_channels": 5,
+    "residual": true,
+    "delay_projection": true,
+    "delay_regularization": true
+  },
+  "model_variant": "residual_hard_delay",
+  "parameter_count": 25858,
+  "device": "cpu",
+  "train_samples_per_epoch": 1200,
+  "validation_samples": 300,
+  "epochs_requested": 5,
+  "epochs_completed": 5,
+  "best_validation_loss": 0.02447674110531807,
+  "train_snr_db_range": [
+    0.0,
+    25.0
+  ],
+  "split_seeds": {
+    "train": 10001101,
+    "validation": 20001101
+  }
+}

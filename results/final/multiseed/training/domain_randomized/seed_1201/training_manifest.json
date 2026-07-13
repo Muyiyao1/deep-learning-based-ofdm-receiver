@@ -1,0 +1,30 @@
+{
+  "config_path": "configs/domain_randomized_config.json",
+  "config_fingerprint": "a035d7eb4caccd770cee5c830ed87ae8ccc63a11c114674e19b8090fc53f6199",
+  "model_spec": {
+    "model_name": "residual_1d_cnn_delay_projected_v1",
+    "hidden_channels": 32,
+    "num_blocks": 4,
+    "channel_length": 12,
+    "in_channels": 5,
+    "residual": true,
+    "delay_projection": true,
+    "delay_regularization": true
+  },
+  "model_variant": "residual_hard_delay",
+  "parameter_count": 25858,
+  "device": "cpu",
+  "train_samples_per_epoch": 1200,
+  "validation_samples": 300,
+  "epochs_requested": 5,
+  "epochs_completed": 5,
+  "best_validation_loss": 0.03140485356251399,
+  "train_snr_db_range": [
+    0.0,
+    30.0
+  ],
+  "split_seeds": {
+    "train": 10001201,
+    "validation": 20001201
+  }
+}

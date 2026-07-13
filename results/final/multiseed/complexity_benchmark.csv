@@ -1,0 +1,4 @@
+estimator,offline_covariance_ms,offline_filter_ms,checkpoint_load_ms,online_mean_ms_per_frame,online_std_ms_per_frame,batch_size,warmup_iterations,timing_repeats,parameter_count,conv_macs_per_frame,checkpoint_bytes,prior_storage_bytes,filter_storage_bytes,approximate_memory_bytes
+ResidualCNN,0.0,0.0,4.604999994626269,0.061990624969136356,0.013135292484096528,64,5,15,25858,1636352,113183,0,0,218120
+LMMSE-oracle,1.9173999899066985,0.39579998701810837,0.0,0.002930104195305224,0.00080430089797487,64,5,15,0,0,0,66560,124784,124784
+LMMSE-sample-10000,20.026200014399365,0.6253999890759587,0.0,0.0031697916407817197,0.0006691852090939698,64,5,15,0,0,0,66560,124784,124784

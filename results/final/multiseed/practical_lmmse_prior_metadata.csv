@@ -1,0 +1,5 @@
+name,source,sample_count,covariance_build_time_ms,diagonal_loading,minimum_eigenvalue,prior_storage_bytes
+LMMSE-oracle,analytic:exponential:12,0,1.9173999899066985,0.0,0.0,66560
+LMMSE-sample-100,sample:exponential:12,100,1.3904999941587448,0.02,1e-06,66560
+LMMSE-sample-1000,sample:exponential:12,1000,2.376199990976602,0.02,1e-06,66560
+LMMSE-sample-10000,sample:exponential:12,10000,20.026200014399365,0.02,1e-06,66560
