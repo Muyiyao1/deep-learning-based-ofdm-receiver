@@ -42,9 +42,19 @@ def save_evaluation_artifacts(
     raw.to_csv(output_dir / "per_seed_results.csv", index=False)
     summary.to_csv(output_dir / "summary_results.csv", index=False)
     methods = preferred_methods(summary, include_train_prior=include_train_prior)
-    plot_ber(summary, output_dir / "ber_vs_snr.png", f"{title_prefix}: BER (mean ± 95% CI)", methods=methods)
+    plot_ber(
+        summary,
+        output_dir / "ber_vs_snr.png",
+        f"{title_prefix}: BER (mean with 95% Student-t CI)",
+        methods=methods,
+    )
     estimators = [method.rsplit("+", 1)[0] for method in methods if method.endswith("+ZF") and not method.startswith("PerfectCSI")]
-    plot_channel_nmse(summary, output_dir / "channel_nmse_vs_snr.png", f"{title_prefix}: channel NMSE (mean ± 95% CI)", estimators=estimators)
+    plot_channel_nmse(
+        summary,
+        output_dir / "channel_nmse_vs_snr.png",
+        f"{title_prefix}: channel NMSE (mean with 95% Student-t CI)",
+        estimators=estimators,
+    )
     if constellation:
         selected_methods = ["PerfectCSI+ZF", "Frame-LS-linear+ZF", "ResidualCNN+ZF"]
         selected = {key: value for key, value in constellation.items() if key in selected_methods}

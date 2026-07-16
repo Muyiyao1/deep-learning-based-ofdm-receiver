@@ -15,6 +15,7 @@ import pandas as pd
 PALETTE = ["#0072B2", "#E69F00", "#009E73", "#CC79A7", "#D55E00", "#56B4E9", "#000000"]
 MARKERS = ["o", "s", "^", "D", "P", "X", "v"]
 LINESTYLES = ["-", "--", "-.", ":", "-", "--", "-."]
+LOG_FLOOR = 1e-12
 
 
 def _method_sequence(df: pd.DataFrame, methods: list[str] | None) -> list[str]:
@@ -30,6 +31,35 @@ def _apply_style(ax: plt.Axes, xlabel: str, ylabel: str, title: str) -> None:
     ax.grid(True, which="both", linestyle="--", linewidth=0.55, alpha=0.55)
 
 
+def _log_ci_errors(values: np.ndarray, ci95: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return log-safe asymmetric Student-t CI errors and crossing flags.
+
+    A symmetric Student-t interval for a non-negative rate can have a negative
+    lower endpoint when there are few independent seeds. Log axes cannot show
+    that endpoint. In that case the lower arm is omitted instead of being
+    artificially extended to an arbitrary plotting floor.
+    """
+
+    value = np.maximum(np.asarray(values, dtype=float), LOG_FLOOR)
+    ci = np.maximum(np.asarray(ci95, dtype=float), 0.0)
+    lower_crosses_zero = value - ci <= 0.0
+    lower = np.where(lower_crosses_zero, 0.0, ci)
+    return value, np.vstack([lower, ci]), lower_crosses_zero
+
+
+def _add_log_ci_note(fig: plt.Figure, lower_crosses_zero: bool) -> None:
+    """Explain one-sided rendering when a Student-t lower limit is non-positive."""
+
+    if lower_crosses_zero:
+        fig.text(
+            0.012,
+            0.012,
+            "Note: a 95% Student-t lower limit crossed 0; its lower error arm is omitted on the log scale.",
+            fontsize=7,
+            color="#555555",
+        )
+
+
 def plot_ber(
     summary: pd.DataFrame,
     output_path: str | Path,
@@ -39,16 +69,17 @@ def plot_ber(
     """Plot seed-mean BER with 95% confidence intervals on a log scale."""
 
     fig, ax = plt.subplots(figsize=(7.4, 4.8), dpi=160)
+    has_nonpositive_lower_limit = False
     for index, method in enumerate(_method_sequence(summary, methods)):
         group = summary[summary["method"] == method].sort_values("snr_db")
         value = group["ber_plot"].to_numpy(dtype=float)
         ci = group["ber_ci95"].to_numpy(dtype=float)
-        lower = np.minimum(ci, np.maximum(value - 1e-12, 0.0))
-        upper = ci
+        value, errors, lower_crosses_zero = _log_ci_errors(value, ci)
+        has_nonpositive_lower_limit |= bool(np.any(lower_crosses_zero))
         ax.errorbar(
             group["snr_db"],
             value,
-            yerr=np.vstack([lower, upper]),
+            yerr=errors,
             color=PALETTE[index % len(PALETTE)],
             marker=MARKERS[index % len(MARKERS)],
             linestyle=LINESTYLES[index % len(LINESTYLES)],
@@ -60,7 +91,8 @@ def plot_ber(
     ax.set_yscale("log")
     _apply_style(ax, "Received-signal SNR (dB)", "Bit error rate", title)
     ax.legend(fontsize=8, ncol=1, frameon=True)
-    fig.tight_layout()
+    _add_log_ci_note(fig, has_nonpositive_lower_limit)
+    fig.tight_layout(rect=(0, 0.04 if has_nonpositive_lower_limit else 0, 1, 1))
     fig.savefig(Path(output_path), bbox_inches="tight")
     plt.close(fig)
 
@@ -77,18 +109,22 @@ def plot_channel_nmse(
     if estimators is not None:
         source = source[source["estimator"].isin(estimators)]
     fig, ax = plt.subplots(figsize=(7.4, 4.8), dpi=160)
+    has_nonpositive_lower_limit = False
     for index, (estimator, group) in enumerate(source.groupby("estimator", sort=False)):
         group = group.sort_values("snr_db")
-        value = np.maximum(group["channel_nmse_mean"].to_numpy(dtype=float), 1e-12)
+        value = group["channel_nmse_mean"].to_numpy(dtype=float)
         ci = group["channel_nmse_ci95"].to_numpy(dtype=float)
+        value, errors, lower_crosses_zero = _log_ci_errors(value, ci)
+        has_nonpositive_lower_limit |= bool(np.any(lower_crosses_zero))
         ax.errorbar(
-            group["snr_db"], value, yerr=ci, color=PALETTE[index % len(PALETTE)], marker=MARKERS[index % len(MARKERS)],
+            group["snr_db"], value, yerr=errors, color=PALETTE[index % len(PALETTE)], marker=MARKERS[index % len(MARKERS)],
             linestyle=LINESTYLES[index % len(LINESTYLES)], linewidth=1.8, markersize=5.0, capsize=2.4, label=estimator,
         )
     ax.set_yscale("log")
     _apply_style(ax, "Received-signal SNR (dB)", "Channel NMSE", title)
     ax.legend(fontsize=8, frameon=True)
-    fig.tight_layout()
+    _add_log_ci_note(fig, has_nonpositive_lower_limit)
+    fig.tight_layout(rect=(0, 0.04 if has_nonpositive_lower_limit else 0, 1, 1))
     fig.savefig(Path(output_path), bbox_inches="tight")
     plt.close(fig)
 
@@ -105,20 +141,27 @@ def plot_metric(
     """Plot a summary metric and its 95% CI when a matching CI column exists."""
 
     fig, ax = plt.subplots(figsize=(7.4, 4.8), dpi=160)
+    has_nonpositive_lower_limit = False
     for index, method in enumerate(_method_sequence(summary, methods)):
         group = summary[summary["method"] == method].sort_values("snr_db")
         value = group[f"{metric}_mean"].to_numpy(dtype=float)
         ci_key = f"{metric}_ci95"
         ci = group[ci_key].to_numpy(dtype=float) if ci_key in group else None
+        if log_y and ci is not None:
+            value, errors, lower_crosses_zero = _log_ci_errors(value, ci)
+            has_nonpositive_lower_limit |= bool(np.any(lower_crosses_zero))
+        else:
+            errors = ci
         ax.errorbar(
-            group["snr_db"], value, yerr=ci, color=PALETTE[index % len(PALETTE)], marker=MARKERS[index % len(MARKERS)],
+            group["snr_db"], value, yerr=errors, color=PALETTE[index % len(PALETTE)], marker=MARKERS[index % len(MARKERS)],
             linestyle=LINESTYLES[index % len(LINESTYLES)], linewidth=1.8, markersize=5.0, capsize=2.4, label=method,
         )
     if log_y:
         ax.set_yscale("log")
     _apply_style(ax, "Received-signal SNR (dB)", ylabel, title)
     ax.legend(fontsize=8, frameon=True)
-    fig.tight_layout()
+    _add_log_ci_note(fig, has_nonpositive_lower_limit)
+    fig.tight_layout(rect=(0, 0.04 if has_nonpositive_lower_limit else 0, 1, 1))
     fig.savefig(Path(output_path), bbox_inches="tight")
     plt.close(fig)
 
@@ -173,9 +216,16 @@ def plot_ablation(ablation: pd.DataFrame, output_path: str | Path) -> None:
     for ax, metric, label in zip(axes, ["ber", "channel_nmse"], ["BER", "Channel NMSE"]):
         values = ablation[f"{metric}_mean"].to_numpy(dtype=float)
         errors = ablation[f"{metric}_ci95"].to_numpy(dtype=float)
-        ax.bar(np.arange(len(labels)), values, yerr=errors, color=PALETTE[: len(labels)], capsize=4)
+        lower_errors = np.minimum(errors, values)
+        ax.bar(
+            np.arange(len(labels)),
+            values,
+            yerr=np.vstack([lower_errors, errors]),
+            color=PALETTE[: len(labels)],
+            capsize=4,
+        )
         ax.set_xticks(np.arange(len(labels)), labels, rotation=12, ha="right")
-        ax.set_yscale("log")
+        ax.set_ylim(bottom=0.0)
         _apply_style(ax, "Estimator variant", label, f"Ablation at {ablation['snr_db'].iloc[0]:.0f} dB")
     fig.tight_layout()
     fig.savefig(Path(output_path), bbox_inches="tight")
@@ -197,13 +247,19 @@ def plot_training_seed_variability(summary: pd.DataFrame, output_path: str | Pat
     """Plot model-seed uncertainty after averaging each model over fixed test streams."""
 
     fig, axes = plt.subplots(1, 2, figsize=(10.0, 4.2), dpi=160)
+    has_nonpositive_lower_limit = False
     for index, (regime, group) in enumerate(summary.groupby("training_regime", sort=False)):
         group = group.sort_values("snr_db")
         for ax, metric, ylabel in zip(axes, ["ber", "channel_nmse"], ["BER", "Channel NMSE"]):
+            values, errors, lower_crosses_zero = _log_ci_errors(
+                group[f"{metric}_mean"].to_numpy(dtype=float),
+                group[f"{metric}_ci95"].to_numpy(dtype=float),
+            )
+            has_nonpositive_lower_limit |= bool(np.any(lower_crosses_zero))
             ax.errorbar(
                 group["snr_db"],
-                np.maximum(group[f"{metric}_mean"], 1e-12),
-                yerr=group[f"{metric}_ci95"],
+                values,
+                yerr=errors,
                 color=PALETTE[index % len(PALETTE)],
                 marker=MARKERS[index % len(MARKERS)],
                 linestyle=LINESTYLES[index % len(LINESTYLES)],
@@ -213,7 +269,8 @@ def plot_training_seed_variability(summary: pd.DataFrame, output_path: str | Pat
             ax.set_yscale("log")
             _apply_style(ax, "Received-signal SNR (dB)", ylabel, "Training-seed uncertainty (95% Student-t CI)")
     axes[0].legend(fontsize=8)
-    fig.tight_layout()
+    _add_log_ci_note(fig, has_nonpositive_lower_limit)
+    fig.tight_layout(rect=(0, 0.04 if has_nonpositive_lower_limit else 0, 1, 1))
     fig.savefig(Path(output_path), bbox_inches="tight")
     plt.close(fig)
 

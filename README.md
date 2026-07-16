@@ -47,6 +47,12 @@ This is a **frame-level observation-fusion and channel-denoising** experiment wi
 
 ## Results and Conclusions
 
+All figures and tables are generated from the current CSV files in `results/final/`. BER plots use a logarithmic axis and show mean with 95% Student-t confidence intervals. When a finite-sample lower confidence limit is non-positive, its lower arm is omitted rather than being misleadingly drawn down to an arbitrary positive plotting floor. To regenerate figures only, without retraining or rerunning simulation:
+
+```bash
+python scripts/regenerate_result_figures.py --results-dir results/final
+```
+
 At 20 dB in the matched 12-tap exponential-PDP case:
 
 | Receiver | BER (mean +/- 95% Student-t CI) | Channel NMSE (mean +/- 95% Student-t CI) |
