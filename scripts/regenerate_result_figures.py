@@ -20,6 +20,7 @@ from src.plots import (
     plot_ber,
     plot_channel_nmse,
     plot_complexity_benchmark,
+    plot_method_slices,
     plot_pilot_pattern,
     plot_training_loss,
     plot_training_seed_variability,
@@ -70,17 +71,49 @@ def _regenerate_practical_comparisons(results_dir: Path) -> list[Path]:
             "ResidualCNN-single+ZF",
             "ResidualCNN-domain_randomized+ZF",
         ]
-        estimators = [method.removesuffix("+ZF") for method in methods]
         ber_path = results_dir / f"practical_ber_{scenario}.png"
         nmse_path = results_dir / f"practical_nmse_{scenario}.png"
-        plot_ber(comparison, ber_path, f"{scenario_title}: BER (95% Student-t CI)", methods=methods)
-        plot_channel_nmse(
+        plot_method_slices(
+            comparison,
+            ber_path,
+            f"{scenario_title}: BER by method (mean with 95% Student-t CI)",
+            metric_column="ber_mean",
+            ci_column="ber_ci95",
+            xlabel="BER (log scale)",
+            methods=methods,
+        )
+        plot_method_slices(
             comparison,
             nmse_path,
-            f"{scenario_title}: channel NMSE (95% Student-t CI)",
-            estimators=estimators,
+            f"{scenario_title}: channel NMSE by method (mean with 95% Student-t CI)",
+            metric_column="channel_nmse_mean",
+            ci_column="channel_nmse_ci95",
+            xlabel="Channel NMSE (log scale)",
+            methods=methods,
         )
-        outputs.extend([ber_path, nmse_path])
+        ber_20db_path = results_dir / f"practical_ber_{scenario}_20db.png"
+        nmse_20db_path = results_dir / f"practical_nmse_{scenario}_20db.png"
+        plot_method_slices(
+            comparison,
+            ber_20db_path,
+            f"{scenario_title}: BER at 20 dB (mean with 95% Student-t CI)",
+            metric_column="ber_mean",
+            ci_column="ber_ci95",
+            xlabel="BER (log scale)",
+            methods=methods,
+            snr_values=[20.0],
+        )
+        plot_method_slices(
+            comparison,
+            nmse_20db_path,
+            f"{scenario_title}: channel NMSE at 20 dB (mean with 95% Student-t CI)",
+            metric_column="channel_nmse_mean",
+            ci_column="channel_nmse_ci95",
+            xlabel="Channel NMSE (log scale)",
+            methods=methods,
+            snr_values=[20.0],
+        )
+        outputs.extend([ber_path, nmse_path, ber_20db_path, nmse_20db_path])
     return outputs
 
 
